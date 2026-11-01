@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เช็คการส่งงาน</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--tx:#1f2937;--mu:#6b7280;--ok:#16a34a;--late:#d97706;--no:#dc2626;--pri:#2563eb;--bd:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--tx:#e5e7eb;--mu:#94a3b8;--bd:#334155}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.5 "TH Sarabun New","Sarabun",system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:8px 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;color:var(--mu);margin:6px 0 2px;font-size:.95rem}
+select,input,button{width:100%;font:inherit;padding:11px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+button{background:var(--pri);color:#fff;border:0;margin-top:12px;font-weight:600}
+.err{color:var(--no);margin-top:8px}
+.who{font-weight:700;font-size:1.2rem}.mu{color:var(--mu);font-size:.95rem}
+.bar{height:10px;background:var(--bd);border-radius:6px;overflow:hidden;margin:8px 0 2px}.bar i{display:block;height:100%;background:var(--ok)}
+.it{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--bd)}
+.it:first-child{border-top:0}.t{font-weight:600}
+.b{white-space:nowrap;padding:3px 10px;border-radius:99px;font-size:.9rem;font-weight:600;color:#fff}
+.done{background:var(--ok)}.late{background:var(--late)}.none{background:var(--no)}
+</style></head><body><main>
+<h1>📚 เช็คการส่งงาน</h1>
+<div class="card" id="f">
+ <label>รายวิชา</label><select id="course"></select>
+ <label>เลขประจำตัวนักเรียน</label><input id="sid" inputmode="numeric" placeholder="เช่น 4968">
+ <button id="go">ดูสถานะงานของฉัน</button><div class="err" id="err"></div>
+</div>
+<div id="out"></div>
+<p class="mu" style="text-align:center" id="upd">แสดงเฉพาะสถานะการส่งงาน</p>
+</main>
+<script>
+const $=id=>document.getElementById(id),L=localStorage;let S=null;
+const ST={d:["done","ส่งแล้ว"],l:["late","ส่งช้า"],n:["none","ยังไม่ส่ง"]};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fd=s=>{if(!s)return"";const[y,m,d]=s.split("-");return `${+d}/${+m}/${+y+543-2500}`};
+async function hash(salt,cid,sid){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+"|"+cid+"|"+sid));
+ return[...new Uint8Array(b)].slice(0,8).map(x=>x.toString(16).padStart(2,"0")).join("")}
+async function init(){
+ try{S=await (await fetch("status.json?"+Date.now())).json()}catch(e){$("err").textContent="ยังไม่มีข้อมูล";return}
+ $("course").innerHTML=S.courses.map(c=>`<option value="${c.id}">${esc(c.label)}</option>`).join("");
+ try{if(L.course)$("course").value=L.course;$("sid").value=L.sid||""}catch(e){}
+ $("upd").textContent="อัปเดตล่าสุด "+new Date(S.updated).toLocaleString("th-TH",{dateStyle:"medium",timeStyle:"short"});
+ if($("sid").value)show();
+}
+async function show(){
+ $("err").textContent="";$("out").innerHTML="";
+ const c=S.courses.find(x=>x.id==$("course").value),sid=$("sid").value.trim();
+ const row=c.s[await hash(S.salt,c.id,sid)];
+ if(row===undefined){$("err").textContent="ไม่พบเลขประจำตัวนี้ในรายวิชาที่เลือก";return}
+ try{L.course=c.id;L.sid=sid}catch(e){}
+ const its=c.items.map((it,i)=>({...it,k:row[i]})),n=its.filter(i=>i.k!="n").length,tot=its.length,today=new Date().toISOString().slice(0,10);
+ const ord={n:0,l:1,d:2};its.sort((a,b)=>ord[a.k]-ord[b.k]);
+ $("out").innerHTML=`<div class="card"><div class="who">เลขประจำตัว ${esc(sid)}</div><div class="mu">${esc(c.label)}</div>
+ <div class="bar"><i style="width:${tot?n/tot*100:0}%"></i></div><div class="mu">ส่งแล้ว ${n} จาก ${tot} งาน${tot-n?` · ค้างอยู่ ${tot-n} งาน`:" 🎉"}</div></div>
+ <div class="card">${tot?its.map(i=>`<div class="it"><div><div class="t">${esc(i.title)}</div>
+ <div class="mu">${i.due?"กำหนดส่ง "+fd(i.due):""}${i.k=="n"&&i.due&&i.due<today?" · <b style='color:var(--no)'>เลยกำหนด</b>":""}${i.note?" · "+esc(i.note):""}</div></div>
+ <span class="b ${ST[i.k][0]}">${ST[i.k][1]}</span></div>`).join(""):'<div class="mu">ยังไม่มีงานที่ครูมอบหมาย</div>'}</div>`;
+}
+$("go").onclick=show;$("sid").onkeydown=e=>{if(e.key=="Enter")show()};init();
+</script></body></html>
